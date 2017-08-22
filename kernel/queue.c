@@ -143,15 +143,6 @@ int queue_size (queue_t *queue) {
     return size;
 }
 
-//------------------------------------------------------------------------------
-// Percorre a fila e imprime na tela seu conteúdo. A impressão de cada
-// elemento é feita por uma função externa, definida pelo programa que
-// usa a biblioteca.
-//
-// Essa função deve ter o seguinte protótipo:
-//
-// void print_elem (void *ptr) ; // ptr aponta para o elemento a imprimir
-
 //  ==================================
 // ||     FUNCTION: queue_print      ||
 // ||                                ||
