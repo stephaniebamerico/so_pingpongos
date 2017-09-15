@@ -10,14 +10,28 @@
 #include <ucontext.h>		// biblioteca POSIX de trocas de contexto
 #include "queue.h"		// biblioteca de filas genéricas
 
+#define STACKSIZE 32768
+
+#define TASK_AGING -1
+
+// task status
+#define READY 0
+#define RUNNING 1
+#define FINISHED 2
+
+// now, this is really confusing...
+#define PRIORITY_NUM_MIN -20 // greatest priority that a task can have
+#define PRIORITY_NUM_MAX 20 // lowest priority that a task can have
+#define PRIORITY_DEFAULT 0
+
 // Estrutura que define um Task Control Block (TCB)
-typedef struct task_t
-{
-   struct task_t *prev, *next ;		// ponteiros para usar em filas
-   int id ;				// identificador da tarefa
-   ucontext_t context ;			// contexto armazenado da tarefa
-   void *stack ;			// aponta para a pilha da tarefa
-   // ... (outros campos serão adicionados mais tarde)
+typedef struct task_t {
+   struct task_t *prev, *next; // ponteiros para usar em filas
+   int id; // identificador da tarefa
+   int state;
+   int priority_static, priority_dynamic;
+   void *stack; // aponta para a pilha da tarefa
+   ucontext_t context ; // contexto armazenado da tarefa
 } task_t ;
 
 // estrutura que define um semáforo
