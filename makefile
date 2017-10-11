@@ -7,7 +7,7 @@
 # ==================================
 
 CC = gcc
-CFLAGS = -Wall -g
+CFLAGS = -Wall -g 
 #-DDEBUG
 
 BIN = bin
@@ -15,7 +15,7 @@ TEST = test
 KERNEL = kernel
 INCLUDE = include
 
-all: testa_dispatcher
+all: testa_join
 
 clean:
 	-rm $(BIN)/task_test*
@@ -47,4 +47,21 @@ testa_scheduler: queue ppos_core
 
 testa_dispatcher: queue ppos_core
 	$(CC) $(CFLAGS) -I$(INCLUDE) -o $(BIN)/testa_dispatcher $(TEST)/pingpong-dispatcher.c queue ppos_core
+	rm -f queue ppos_core
+
+testa_preempcao: queue ppos_core
+	$(CC) $(CFLAGS) -I$(INCLUDE) -o $(BIN)/testa_preempcao $(TEST)/pingpong-preempcao.c queue ppos_core
+	rm -f queue ppos_core
+
+testa_contab: queue ppos_core
+	$(CC) $(CFLAGS) -I$(INCLUDE) -o $(BIN)/testa_contab $(TEST)/pingpong-contab.c queue ppos_core
+	$(CC) $(CFLAGS) -I$(INCLUDE) -o $(BIN)/testa_contab_prio $(TEST)/pingpong-contab-prio.c queue ppos_core
+	rm -f queue ppos_core
+
+testa_maintask: queue ppos_core
+	$(CC) $(CFLAGS) -I$(INCLUDE) -o $(BIN)/testa_maintask $(TEST)/pingpong-maintask.c queue ppos_core
+	rm -f queue ppos_core
+
+testa_join: queue ppos_core
+	$(CC) $(CFLAGS) -I$(INCLUDE) -o $(BIN)/testa_join $(TEST)/pingpong-join.c queue ppos_core
 	rm -f queue ppos_core

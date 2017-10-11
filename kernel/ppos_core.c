@@ -2,14 +2,31 @@
 #include "ppos_data.h"
 #include <stdio.h> 
 #include <stdlib.h>
+#include <signal.h>
+#include <sys/time.h>
 
 int tid_counter; // number of tasks, used for task id
+unsigned int ticks_counter;
 
 task_t *actual; // actual task
 task_t main_t; // task for main function
 task_t dispatcher_t; // task for dispatcher function
 
 queue_t *ready_queue; // ready tasks queue
+
+struct sigaction action_timer; // structure to register an interrupt handler
+struct itimerval timer; // timer for interruptions
+
+void time_interrupt_handler (int signal) {
+    ++ticks_counter;
+    ++(actual->proc_time);
+    if (--(actual->quantum) == 0)
+        task_yield();
+}
+
+unsigned int systime () {
+    return ticks_counter;
+}
 
 task_t *scheduler() {
 #ifdef DEBUG
@@ -53,8 +70,6 @@ void dispatcher() {
 #ifdef DEBUG
     printf("dispatcher: starting.\n");
 #endif
-    queue_remove(&ready_queue, (queue_t *) &main_t);
-
     task_t* next_task = NULL;
     while ((next_task = scheduler())) { // while exists tasks waiting in the queue
         if (next_task) {
@@ -87,14 +102,42 @@ void ppos_init () {
     main_t.priority_static = PRIORITY_DEFAULT;
     main_t.priority_dynamic = PRIORITY_DEFAULT;
     main_t.state = READY;
+    main_t.quantum = QUANTUM;
+    main_t.exec_time = systime();
+    main_t.proc_time = 0;
+    main_t.activations = 0;
 
     tid_counter = 1;
 
-    actual = &main_t;
+    ticks_counter = 0;
+
+    // register an interrupt handler
+    action_timer.sa_handler = time_interrupt_handler;
+    sigemptyset (&action_timer.sa_mask);
+    action_timer.sa_flags = 0;
+    if (sigaction (SIGALRM, &action_timer, 0) < 0) {
+        perror ("Error in sigaction: ") ;
+        exit (1) ;
+    }
+
+    // set timer
+    timer.it_value.tv_usec = TICK_TIMER_US;        // microseconds
+    timer.it_value.tv_sec = TICK_TIMER_S;          // seconds
+    timer.it_interval.tv_usec = TICK_TIMER_US;     // microseconds
+    timer.it_interval.tv_sec = TICK_TIMER_S;       // seconds
+
+    if (setitimer (ITIMER_REAL, &timer, 0) < 0) {
+        perror ("Error in setitimer: ") ;
+        exit (1) ;
+    }
 
     // creates dispatcher, but it never goes to ready queue
     task_create(&dispatcher_t, dispatcher, NULL);
     queue_remove(&ready_queue, (queue_t *) &dispatcher_t);
+
+    actual = &main_t;
+
+    task_yield();
 }
 
 int task_create (task_t *task, void (*start_func)(void *), void *arg) {
@@ -123,6 +166,10 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg) {
         task->priority_static = PRIORITY_DEFAULT;
         task->priority_dynamic = PRIORITY_DEFAULT;
         task->state = READY;
+        task->quantum = QUANTUM;
+        task->exec_time = systime();
+        task->proc_time = 0;
+        task->activations = 0;
 
         #ifdef DEBUG
             printf ("task_create: task created %d\n", task->id);
@@ -143,12 +190,24 @@ void task_exit (int exitCode) {
     printf ("task_exit: starting\n") ;
 #endif
     actual->state = FINISHED;
+    actual->exec_time = systime() - actual->exec_time; 
+    actual->exit_code = exitCode;
+    printf("Task %d exit: execution time %u ms, processor time %u ms, %u activations\n", 
+            actual->id, actual->exec_time, actual->proc_time, actual->activations);
 
     if (actual->id == dispatcher_t.id) { // if the dispatcher is terminating, it returns the control to main
         free(dispatcher_t.context.uc_stack.ss_sp);
-        task_switch(&main_t);
-    } else 
+    } else {
+        // wakes up the tasks that were waiting for the actual task to finish
+        task_t *aux = NULL;
+        while(queue_size(actual->join_tasks) > 0) {
+            aux = (task_t *) queue_remove(&(actual->join_tasks), (queue_t *) actual->join_tasks);
+            queue_append(&ready_queue, (queue_t *) aux);
+            aux->id = READY;
+        }
+
         task_switch(&dispatcher_t); // return control to dispatcher
+    }
 }
 
 int task_switch (task_t *task) {
@@ -158,6 +217,9 @@ int task_switch (task_t *task) {
     // save the actual task as backup and make the task (parameter) the actual
     task_t *backup = actual;
     actual = task;
+    actual->quantum = QUANTUM;
+    actual->priority_dynamic = actual->priority_static;
+    ++(actual->activations);
 
     if (swapcontext(&(backup->context), &(task->context)) < 0) {
         fprintf(stderr, "task_switch: can not switch contexts\n");
@@ -211,4 +273,22 @@ void task_yield() {
     queue_append(&ready_queue, (queue_t *) actual);
     actual->state = READY;
     task_switch(&dispatcher_t);
+}
+
+int task_join (task_t *task) {
+#ifdef DEBUG
+    printf("task_join: starting, joined task id is %d \n", actual->id);
+#endif
+    if(!task || task->state == FINISHED)
+        return -1;
+
+    // suspends the task and places it in the join queue
+    queue_append(&(task->join_tasks), (queue_t *) actual);
+    actual->state = SUSPENDED;
+
+    task_switch(&dispatcher_t);
+
+    // when the task returns, it means that the expected
+    // task has already finished and we have the code
+    return task->exit_code;
 }
