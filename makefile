@@ -15,7 +15,7 @@ TEST = test
 KERNEL = kernel
 INCLUDE = include
 
-all: testa_join
+all: testa_sleep
 
 clean:
 	-rm $(BIN)/task_test*
@@ -64,4 +64,8 @@ testa_maintask: queue ppos_core
 
 testa_join: queue ppos_core
 	$(CC) $(CFLAGS) -I$(INCLUDE) -o $(BIN)/testa_join $(TEST)/pingpong-join.c queue ppos_core
+	rm -f queue ppos_core
+
+testa_sleep: queue ppos_core
+	$(CC) $(CFLAGS) -I$(INCLUDE) -o $(BIN)/testa_sleep $(TEST)/pingpong-sleep.c queue ppos_core
 	rm -f queue ppos_core

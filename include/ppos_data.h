@@ -19,6 +19,7 @@
 #define RUNNING 1
 #define FINISHED 2
 #define SUSPENDED 3
+#define SLEEPING 4
 
 // now, this is really confusing...
 #define PRIORITY_NUM_MIN -20 // greatest priority that a task can have
@@ -36,8 +37,11 @@ typedef struct task_t {
    int state;
    int exit_code;
    int priority_static, priority_dynamic;
+
    unsigned int quantum;
+   unsigned int wakeUpTime; // horario para acordar essa tarefa
    unsigned int exec_time, proc_time, activations;
+   
    void *stack; // aponta para a pilha da tarefa
    ucontext_t context ; // contexto armazenado da tarefa
    queue_t *join_tasks; // joined tasks queue

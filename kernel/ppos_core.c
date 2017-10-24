@@ -13,6 +13,7 @@ task_t main_t; // task for main function
 task_t dispatcher_t; // task for dispatcher function
 
 queue_t *ready_queue; // ready tasks queue
+queue_t *sleeping_queue; // sleeping tasks queue
 
 struct sigaction action_timer; // structure to register an interrupt handler
 struct itimerval timer; // timer for interruptions
@@ -20,8 +21,10 @@ struct itimerval timer; // timer for interruptions
 void time_interrupt_handler (int signal) {
     ++ticks_counter;
     ++(actual->proc_time);
-    if (--(actual->quantum) == 0)
+    if (--(actual->quantum) == 0 && actual != &dispatcher_t) {
+        printf("oi %d\n", actual->id);
         task_yield();
+    }
 }
 
 unsigned int systime () {
@@ -29,9 +32,9 @@ unsigned int systime () {
 }
 
 task_t *scheduler() {
-#ifdef DEBUG
-    printf("scheduler: starting.\n");
-#endif
+//#ifdef DEBUG
+//    printf("scheduler: starting. ready_queue size is: %d.\n", queue_size(ready_queue));
+//#endif
     if (queue_size(ready_queue) == 0)
         return NULL;
 
@@ -71,7 +74,8 @@ void dispatcher() {
     printf("dispatcher: starting.\n");
 #endif
     task_t* next_task = NULL;
-    while ((next_task = scheduler())) { // while exists tasks waiting in the queue
+    // while exists tasks waiting in ready/sleeping queue
+    while ((next_task = scheduler()) || (queue_size(sleeping_queue) > 0)) {
         if (next_task) {
             next_task->state = RUNNING;
 
@@ -81,6 +85,24 @@ void dispatcher() {
             if (next_task->state == FINISHED) {
                 free(next_task->context.uc_stack.ss_sp);
             }
+        }
+
+        if(queue_size(sleeping_queue) > 0) {
+            queue_t *aux, *next = NULL;
+            for (aux = sleeping_queue->next; aux != sleeping_queue; aux = next) {
+                next = aux->next;
+                if ( (((task_t *) aux)->state == SLEEPING) && ((task_t *) aux)->wakeUpTime <= systime() ) {
+                    queue_remove(&sleeping_queue, (queue_t *) aux);
+                    ((task_t *) aux)->state = READY;
+                    queue_append(&ready_queue, (queue_t *) aux);
+                }
+            }
+            if ( (((task_t *) aux)->state == SLEEPING) && ((task_t *) aux)->wakeUpTime <= systime() ) {
+                queue_remove(&sleeping_queue, (queue_t *) aux);
+                ((task_t *) aux)->state = READY;
+                queue_append(&ready_queue, (queue_t *) aux);
+            }
+
         }
     }
 
@@ -94,6 +116,9 @@ void ppos_init () {
 
     /* disables the stdout buffer */
     setvbuf (stdout, 0, _IONBF, 0) ;
+
+    ready_queue = NULL;
+    sleeping_queue = NULL;
 
     /* sets the parameters of the main task */
     main_t.prev = NULL;
@@ -291,4 +316,20 @@ int task_join (task_t *task) {
     // when the task returns, it means that the expected
     // task has already finished and we have the code
     return task->exit_code;
+}
+
+void task_sleep (int t) {
+#ifdef DEBUG
+    printf("task_sleep: starting, the id of the sleeping task is %d \n", actual->id);
+#endif
+    // remove the task from the ready queue (mas não está na fila de prontas...)
+    // queue_remove(&ready_queue, (queue_t *) actual);
+
+    // calculates at what time this task should be agreed
+    actual->wakeUpTime = systime()+t;
+    // put to sleep the task and places it in the sleeping queue
+    actual->state = SLEEPING;
+    queue_append(&sleeping_queue, (queue_t *) actual);
+
+    task_switch(&dispatcher_t);
 }
