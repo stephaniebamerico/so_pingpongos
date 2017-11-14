@@ -4,8 +4,10 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <sys/time.h>
+#include <string.h>
 
 int tid_counter; // number of tasks, used for task id
+int atomic;
 unsigned int ticks_counter;
 
 task_t *actual; // actual task
@@ -21,8 +23,10 @@ struct itimerval timer; // timer for interruptions
 void time_interrupt_handler (int signal) {
     ++ticks_counter;
     ++(actual->proc_time);
-    if (--(actual->quantum) == 0 && actual != &dispatcher_t) {
-        printf("oi %d\n", actual->id);
+    // if it is not using an atomic instruction, 
+    // it is not the dispatcher and the quantum time is over,
+    // it leaves the CPU
+    if (!atomic && --(actual->quantum) == 0 && actual != &dispatcher_t) {
         task_yield();
     }
 }
@@ -161,6 +165,7 @@ void ppos_init () {
     queue_remove(&ready_queue, (queue_t *) &dispatcher_t);
 
     actual = &main_t;
+    atomic = 0; // can be preempted
 
     task_yield();
 }
@@ -332,4 +337,187 @@ void task_sleep (int t) {
     queue_append(&sleeping_queue, (queue_t *) actual);
 
     task_switch(&dispatcher_t);
+}
+
+// semaphore
+
+int sem_create (semaphore_t *s, int value) {
+#ifdef DEBUG
+    printf("sem_create: starting.\n");
+#endif
+    if(!s)
+        return -1;
+
+    atomic = 1; // cant be preempted
+
+    s->count = value;
+    s->queue = NULL;
+    s->state = READY;
+
+    atomic = 0; // can be preempted
+    return 0;
+}
+
+int sem_down (semaphore_t *s) {
+#ifdef DEBUG
+    printf("sem_down: starting.\n");
+#endif
+    if(!s || s->state == DESTROYED)
+        return -1;
+
+    atomic = 1; // cant be preempted
+    
+    --(s->count);
+    if(s->count < 0) {
+        queue_append(&(s->queue), (queue_t *) actual);
+        actual->state = SUSPENDED;
+
+        atomic = 0;
+        task_switch(&dispatcher_t);
+
+        if(s->state == DESTROYED)
+            return -1;
+    }
+
+    atomic = 0; // can be preempted
+    return 0;
+}
+
+int sem_up (semaphore_t *s) {
+#ifdef DEBUG
+    printf("sem_up: starting.\n");
+#endif
+    if(!s || s->state == DESTROYED)
+        return -1;
+
+    atomic = 1; // cant be preempted
+
+    ++(s->count);
+    if(queue_size(s->queue) > 0) {
+        task_t *aux = (task_t *) queue_remove(&(s->queue), s->queue);
+        aux->state = READY;
+        queue_append(&ready_queue, (queue_t *) aux);
+    }
+
+    atomic = 0; // can be preempted
+    return 0;
+}
+
+int sem_destroy (semaphore_t *s) {
+#ifdef DEBUG
+    printf("sem_destroy: starting.\n");
+#endif
+    if(!s || s->state == DESTROYED)
+        return -1;
+
+    atomic = 1; // cant be preempted
+
+    while(queue_size(s->queue) > 0) {
+        task_t *aux = (task_t *) queue_remove(&(s->queue), s->queue);
+        aux->state = READY;
+        aux->exit_code = -1;
+        queue_append(&ready_queue, (queue_t *) aux);
+    }
+    
+    s->state = DESTROYED;
+
+    atomic = 0; // can be preempted
+    return 0;
+}
+
+int mqueue_create (mqueue_t *queue, int max, int size) {
+#ifdef DEBUG
+    printf("mqueue_create: starting.\n");
+#endif
+	if(!queue)
+		return -1;
+	// inicializes semaphores, allocates the message queue and initializes attributes
+	if(sem_create(&(queue->semaphore_acess), 1) == -1 || 
+	   sem_create(&(queue->semaphore_items), 0) == -1 ||
+	   sem_create(&(queue->semaphore_vacancies), max) == -1)
+		return -1;
+
+	if(!(queue->buffer = malloc(max*size)))
+		return -1;
+
+	queue->head = 0;
+	queue->tail = 0;
+	queue->queue_size = 0;
+  	queue->queue_capacity = max;
+	queue->msg_capacity = size;
+	queue->state = READY;
+
+	return 0;
+}
+
+int mqueue_send (mqueue_t *queue, void *msg) {
+#ifdef DEBUG
+    printf("mqueue_send: starting.\n");
+#endif
+	if(!queue || queue->state == DESTROYED)
+		return -1;
+
+	// first needs a vacancy, then needs exclusive access to the buffer
+	if(sem_down(&(queue->semaphore_vacancies)) == -1 || sem_down(&(queue->semaphore_acess)) == -1)
+		return -1;
+
+	// copy message to buffer
+	memcpy(queue->buffer+(queue->tail*queue->msg_capacity), msg, queue->msg_capacity);
+	queue->tail = (queue->tail+1)%queue->queue_capacity;
+	++queue->queue_size;
+
+	// releases exclusive access to the buffer and increments items
+	if(sem_up(&(queue->semaphore_acess)) == -1 || sem_up(&(queue->semaphore_items)) == -1)
+		return -1;
+
+	return 0;
+}
+
+int mqueue_recv (mqueue_t *queue, void *msg) {
+#ifdef DEBUG
+    printf("mqueue_recv: starting.\n");
+#endif
+    if(!queue || queue->state == DESTROYED)
+		return -1;
+
+	// first needs an item, then needs exclusive access to the buffer
+	if(sem_down(&(queue->semaphore_items)) == -1 || sem_down(&(queue->semaphore_acess)) == -1)
+		return -1;
+
+	// copy buffer to message
+	memcpy(msg, queue->buffer+(queue->head*queue->msg_capacity), queue->msg_capacity);
+	queue->head = (queue->head+1)%queue->queue_capacity;
+	--queue->queue_size;
+
+	// releases exclusive access to the buffer and increments vacancies
+	if(sem_up(&(queue->semaphore_acess)) == -1 || sem_up(&(queue->semaphore_vacancies)) == -1)
+		return -1;
+
+	return 0;
+}
+
+int mqueue_destroy (mqueue_t *queue) {
+#ifdef DEBUG
+    printf("mqueue_destroy: starting.\n");
+#endif
+    if(!queue || queue->state == DESTROYED)
+		return -1;
+
+	free(queue->buffer);
+	sem_destroy(&(queue->semaphore_acess));
+	sem_destroy(&(queue->semaphore_items));
+	sem_destroy(&(queue->semaphore_vacancies));
+	queue->state = DESTROYED;
+
+	return 0;
+}
+
+int mqueue_msgs (mqueue_t *queue) {
+#ifdef DEBUG
+    printf("mqueue_msgs: starting.\n");
+#endif
+    if(!queue || queue->state == DESTROYED)
+		return -1;
+
+	return queue->queue_size;
 }

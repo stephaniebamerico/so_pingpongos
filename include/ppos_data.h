@@ -20,6 +20,7 @@
 #define FINISHED 2
 #define SUSPENDED 3
 #define SLEEPING 4
+#define DESTROYED 5
 
 // now, this is really confusing...
 #define PRIORITY_NUM_MIN -20 // greatest priority that a task can have
@@ -48,9 +49,10 @@ typedef struct task_t {
 } task_t ;
 
 // estrutura que define um semáforo
-typedef struct
-{
-  // preencher quando necessário
+typedef struct {
+  int count;
+  int state;
+  queue_t *queue;
 } semaphore_t ;
 
 // estrutura que define um mutex
@@ -66,9 +68,16 @@ typedef struct
 } barrier_t ;
 
 // estrutura que define uma fila de mensagens
-typedef struct
-{
-  // preencher quando necessário
+typedef struct {
+  int queue_size;
+  int queue_capacity;
+  int msg_capacity;
+  int state;
+  semaphore_t semaphore_acess, semaphore_items, semaphore_vacancies;
+
+  // circular buffer
+  int head, tail;
+  void *buffer;
 } mqueue_t ;
 
 #endif
