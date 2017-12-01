@@ -17,7 +17,7 @@ task_t dispatcher_t; // task for dispatcher function
 queue_t *ready_queue; // ready tasks queue
 queue_t *sleeping_queue; // sleeping tasks queue
 
-struct sigaction action_timer; // structure to register an interrupt handler
+struct sigaction action_timer; // structure to register an interrupt sa_handler
 struct itimerval timer; // timer for interruptions
 
 void time_interrupt_handler (int signal) {
