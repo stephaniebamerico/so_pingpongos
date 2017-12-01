@@ -7,7 +7,8 @@
 # ==================================
 
 CC = gcc
-CFLAGS = -Wall -g -DDEBUG
+CFLAGS = -Wall -g 
+#-DDEBUG
 
 BIN = bin
 TEST = test
@@ -26,7 +27,6 @@ clean:
 
 mkdir_bin:
 	mkdir -p $(BIN)
-	cp disk0.dat $(BIN)
 
 #---------------------------------------------------------------
 

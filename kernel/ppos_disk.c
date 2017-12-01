@@ -44,8 +44,6 @@ void disk_driver_body (void *args) {
     printf("disk_driver_body: starting.\n");
 #endif
 	while (1) {
-		atomic = 1;
-
 		// obtém o semáforo de acesso ao disco
 		sem_down(&(hd.semaphore_acess));
 
@@ -54,10 +52,13 @@ void disk_driver_body (void *args) {
 			hd.signal = 0;
 
 			// acorda a tarefa cujo pedido foi atendido
-			task_request *requester_t = (task_request *) queue_remove(&(disk_queue), disk_queue);
+			task_request *requester_t = (task_request *) disk_queue;
+			queue_remove(&(disk_queue), disk_queue);
 
 			requester_t->requester->state = READY;
 			queue_append(&ready_queue, (queue_t *) requester_t->requester);
+
+			free(requester_t);
 		}
 
 		// se o disco estiver livre e houver pedidos de E/S na fila
@@ -68,15 +69,12 @@ void disk_driver_body (void *args) {
 			// solicita ao disco a operação de E/S, usando disk_cmd()
 			disk_cmd(request_t->request, request_t->block, request_t->buffer);
 		}
-		printf("######################################## driver SEM UP\n");
 
 		// libera o semáforo de acesso ao disco
 		sem_up(&(hd.semaphore_acess));
 
 		// suspende a tarefa corrente (retorna ao dispatcher)
 		actual->state = SUSPENDED;
-
-		atomic = 0;
 		
 		task_switch(&dispatcher_t);
    }
@@ -86,6 +84,8 @@ int disk_mgr_init (int *numBlocks, int *blockSize) {
 #ifdef DEBUG
     printf("disk_mgr_init: starting. numBlocks: %d blockSize: %d.\n", *numBlocks, *blockSize);
 #endif
+    disk_queue = NULL;
+
     /* interrupt handler */
     disk_timer.sa_handler = disk_interrupt_handler;
     sigemptyset (&(disk_timer.sa_mask));
@@ -97,7 +97,9 @@ int disk_mgr_init (int *numBlocks, int *blockSize) {
 
     /* task manager */
     task_create(&disk_manager, disk_driver_body, NULL);
+
     queue_remove(&ready_queue, (queue_t *) &disk_manager);
+    
     disk_manager.state = SUSPENDED;
 
     /* inicializes the disk */
@@ -117,7 +119,6 @@ int disk_block_read (int block, void *buffer) {
 #ifdef DEBUG
     printf("disk_block_read: starting. block: %d buffer: %d.\n", block, *((int *) (buffer)));
 #endif
-	atomic = 1;
 	sem_down(&(hd.semaphore_acess));
 
 	// Creates task and inserts in requisition queue
@@ -130,17 +131,15 @@ int disk_block_read (int block, void *buffer) {
 	request_t->requester = actual;
 
 	actual->state = SUSPENDED;
-	queue_append(&disk_queue, (queue_t *) &request_t);
+	queue_append(&disk_queue, (queue_t *) request_t);
 
 	// if the disk manager is sleeping, wake up
 	if(disk_manager.state == SUSPENDED) {
 		disk_manager.state = READY;
 		queue_append(&ready_queue, (queue_t *) &disk_manager);
 	}
-	printf("######################################## disk_block_read SEM UP\n");
 
 	sem_up(&(hd.semaphore_acess));
-	atomic = 0;
 	task_switch(&dispatcher_t);
 
 	return 0;
@@ -150,7 +149,6 @@ int disk_block_write (int block, void *buffer) {
 #ifdef DEBUG
     printf("disk_block_write: starting. block: %d buffer: %d.\n", block, *((int *) (buffer)));
 #endif
-    atomic = 1;
 	sem_down(&(hd.semaphore_acess));
 
 	// Creates task and inserts in requisition queue
@@ -163,17 +161,15 @@ int disk_block_write (int block, void *buffer) {
 	request_t->requester = actual;
 
 	actual->state = SUSPENDED;
-	queue_append(&disk_queue, (queue_t *) &request_t);
+	queue_append(&disk_queue, (queue_t *) request_t);
 
 	// if the disk manager is sleeping, wake up
 	if(disk_manager.state == SUSPENDED) {
 		disk_manager.state = READY;
 		queue_append(&ready_queue, (queue_t *) &disk_manager);
 	}
-	printf("######################################## disk_block_write SEM UP\n");
 
 	sem_up(&(hd.semaphore_acess));
-	atomic = 0;
 
 	task_switch(&dispatcher_t);
 
