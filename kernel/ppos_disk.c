@@ -90,7 +90,7 @@ int disk_mgr_init (int *numBlocks, int *blockSize) {
     disk_timer.sa_handler = disk_interrupt_handler;
     sigemptyset (&(disk_timer.sa_mask));
     disk_timer.sa_flags = 0;
-    if (sigaction (SIGALRM, &disk_timer, 0) < 0) {
+    if (sigaction (SIGUSR1, &disk_timer, 0) < 0) {
         perror ("Error in disk sigaction: ") ;
         exit (1) ;
     }
@@ -121,13 +121,13 @@ int disk_block_read (int block, void *buffer) {
 	sem_down(&(hd.semaphore_acess));
 
 	// Creates task and inserts in requisition queue
-	task_request request_t;
-	request_t.next = NULL;
-	request_t.prev = NULL;
-	request_t.request = DISK_CMD_READ;
-	request_t.block = block;
-	request_t.buffer = buffer;
-	request_t.requester = actual;
+	task_request* request_t = (task_request *) malloc(sizeof(task_request));
+	request_t->next = NULL;
+	request_t->prev = NULL;
+	request_t->request = DISK_CMD_READ;
+	request_t->block = block;
+	request_t->buffer = buffer;
+	request_t->requester = actual;
 
 	actual->state = SUSPENDED;
 	queue_append(&disk_queue, (queue_t *) &request_t);
@@ -154,13 +154,13 @@ int disk_block_write (int block, void *buffer) {
 	sem_down(&(hd.semaphore_acess));
 
 	// Creates task and inserts in requisition queue
-	task_request request_t;
-	request_t.next = NULL;
-	request_t.prev = NULL;
-	request_t.request = DISK_CMD_WRITE;
-	request_t.block = block;
-	request_t.buffer = buffer;
-	request_t.requester = actual;
+	task_request* request_t = (task_request *) malloc(sizeof(task_request));
+	request_t->next = NULL;
+	request_t->prev = NULL;
+	request_t->request = DISK_CMD_WRITE;
+	request_t->block = block;
+	request_t->buffer = buffer;
+	request_t->requester = actual;
 
 	actual->state = SUSPENDED;
 	queue_append(&disk_queue, (queue_t *) &request_t);
