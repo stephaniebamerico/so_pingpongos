@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 
 /* local variables */
 disk_t hd; // hard disk
@@ -39,6 +40,9 @@ void disk_interrupt_handler (int signal) {
 }
 
 void disk_driver_body (void *args) {
+#ifdef DEBUG
+    printf("disk_driver_body: starting.\n");
+#endif
 	while (1) {
 		atomic = 1;
 
@@ -47,6 +51,8 @@ void disk_driver_body (void *args) {
 
 		// se foi acordado devido a um sinal do disco
 		if(hd.signal == 1) {
+			hd.signal = 0;
+
 			// acorda a tarefa cujo pedido foi atendido
 			task_request *requester_t = (task_request *) queue_remove(&(disk_queue), disk_queue);
 
@@ -62,6 +68,7 @@ void disk_driver_body (void *args) {
 			// solicita ao disco a operação de E/S, usando disk_cmd()
 			disk_cmd(request_t->request, request_t->block, request_t->buffer);
 		}
+		printf("######################################## driver SEM UP\n");
 
 		// libera o semáforo de acesso ao disco
 		sem_up(&(hd.semaphore_acess));
@@ -81,7 +88,7 @@ int disk_mgr_init (int *numBlocks, int *blockSize) {
 #endif
     /* interrupt handler */
     disk_timer.sa_handler = disk_interrupt_handler;
-    sigemptyset (&disk_timer.sa_mask);
+    sigemptyset (&(disk_timer.sa_mask));
     disk_timer.sa_flags = 0;
     if (sigaction (SIGALRM, &disk_timer, 0) < 0) {
         perror ("Error in disk sigaction: ") ;
@@ -108,7 +115,7 @@ int disk_mgr_init (int *numBlocks, int *blockSize) {
 
 int disk_block_read (int block, void *buffer) {
 #ifdef DEBUG
-    printf("disk_block_read: starting. block: %d buffer: %d.\n", *block, *buffer);
+    printf("disk_block_read: starting. block: %d buffer: %d.\n", block, *((int *) (buffer)));
 #endif
 	atomic = 1;
 	sem_down(&(hd.semaphore_acess));
@@ -130,10 +137,10 @@ int disk_block_read (int block, void *buffer) {
 		disk_manager.state = READY;
 		queue_append(&ready_queue, (queue_t *) &disk_manager);
 	}
+	printf("######################################## disk_block_read SEM UP\n");
 
 	sem_up(&(hd.semaphore_acess));
 	atomic = 0;
-
 	task_switch(&dispatcher_t);
 
 	return 0;
@@ -141,7 +148,7 @@ int disk_block_read (int block, void *buffer) {
 
 int disk_block_write (int block, void *buffer) {
 #ifdef DEBUG
-    printf("disk_block_write: starting. block: %d buffer: %d.\n", *block, *buffer);
+    printf("disk_block_write: starting. block: %d buffer: %d.\n", block, *((int *) (buffer)));
 #endif
     atomic = 1;
 	sem_down(&(hd.semaphore_acess));
@@ -163,6 +170,7 @@ int disk_block_write (int block, void *buffer) {
 		disk_manager.state = READY;
 		queue_append(&ready_queue, (queue_t *) &disk_manager);
 	}
+	printf("######################################## disk_block_write SEM UP\n");
 
 	sem_up(&(hd.semaphore_acess));
 	atomic = 0;

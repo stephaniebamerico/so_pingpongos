@@ -16,6 +16,7 @@ task_t dispatcher_t; // task for dispatcher function
 
 queue_t *ready_queue; // ready tasks queue
 queue_t *sleeping_queue; // sleeping tasks queue
+extern queue_t *disk_queue;
 
 struct sigaction action_timer; // structure to register an interrupt sa_handler
 struct itimerval timer; // timer for interruptions
@@ -79,7 +80,7 @@ void dispatcher() {
 #endif
     task_t* next_task = NULL;
     // while exists tasks waiting in ready/sleeping queue
-    while ((next_task = scheduler()) || (queue_size(sleeping_queue) > 0)) {
+    while ((next_task = scheduler()) || (queue_size(sleeping_queue) > 0) || queue_size(disk_queue) > 0) {
         if (next_task) {
             next_task->state = RUNNING;
 

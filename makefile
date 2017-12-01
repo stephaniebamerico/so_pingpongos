@@ -7,8 +7,7 @@
 # ==================================
 
 CC = gcc
-CFLAGS = -Wall -g 
-#-DDEBUG
+CFLAGS = -Wall -g -DDEBUG
 
 BIN = bin
 TEST = test
@@ -27,6 +26,7 @@ clean:
 
 mkdir_bin:
 	mkdir -p $(BIN)
+	cp disk0.dat $(BIN)
 
 #---------------------------------------------------------------
 
@@ -85,7 +85,7 @@ testa_mqueue: mkdir_bin queue ppos_core
 	$(CC) $(CFLAGS) -I$(INCLUDE) -o $(BIN)/testa_mqueue $(TEST)/pingpong-mqueue.c queue ppos_core -lm
 	rm -f queue ppos_core
 
-testa_diskmanager: mkdir_bin queue ppos_core ppos_disk hard_disk
+testa_diskmanager: mkdir_bin queue ppos_core ppos_disk hard_disk $(TEST)/pingpong-disco.c
 	$(CC) $(CFLAGS) -I$(INCLUDE) -o $(BIN)/testa_diskmanager $(TEST)/pingpong-disco.c queue ppos_core ppos_disk hard_disk -lm -lrt
 	rm -f queue ppos_core ppos_disk hard_disk
 
